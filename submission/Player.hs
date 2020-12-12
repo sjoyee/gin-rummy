@@ -52,7 +52,9 @@ playCard picked score memory hand =
 -- | This function is called at the end of the game when you need to return the
 -- melds you formed with your last hand.
 makeMelds :: MeldFunc
-makeMelds = undefined
+makeMelds _ mem hand = toMelds (hand \\ deadwood) ++ (Deadwood <$> deadwood)
+    where
+        deadwood = getCardsMem deadwoodPar mem
 
 
 
