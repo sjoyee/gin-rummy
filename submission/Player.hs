@@ -40,17 +40,20 @@ playCard :: PlayFunc
 playCard picked score memory hand = 
     (action, writeMeminPlay memory (cardToDiscard action) deadwood)
     where 
-        deadwood = deadwoods (picked:hand) 
-        turn = getTurnMem memory
-        oppScore = snd score
-        discards = getCardsMem allDiscardPar memory
-        opicks = getCardsMem oppPickPar memory
+        deadwood = deadwoods (picked:hand)
+        turn = getTurnMem memory               -- game turn from memory 
+        oppScore = snd score                   -- opponent's score from memory
+        discards = getCardsMem allDiscardPar memory -- discarded cards from memory
+        opicks = getCardsMem oppPickPar memory -- opponent's picked cards from memory
         action = 
             chooseAction deadwood turn oppScore discards opicks picked hand
+            -- action chosen by the player
 
 
 -- | This function is called at the end of the game when you need to return the
--- melds you formed with your last hand.
+-- melds you formed with your last hand. This is the function where the player 
+-- arrange all the Card in hand to Set, Straight and Deadwood respectively in order 
+-- to make melds. Deadwood is obtained from the memory to increase efficiency.
 makeMelds :: MeldFunc
 makeMelds _ mem hand = toMelds (hand \\ deadwood) ++ (Deadwood <$> deadwood)
     where
@@ -58,7 +61,7 @@ makeMelds _ mem hand = toMelds (hand \\ deadwood) ++ (Deadwood <$> deadwood)
 
 
 
--- Helper functions for pickCard function, might also be reused in other 
+-- Helper functions for pickCard function, might also be reused for other 
 -- functions.
 
 -- | Get the Suit of Card by pattern matching.
@@ -102,8 +105,8 @@ possibleStraightWithNewCard card cards = filter hasPossibleStraight $
     sortedCards = sort [card] ++ cardsWithSuit (getSuit card) cards
 
 -- | Check if cards can form Straight among themselves.
-possibleStraightWithoutNewCard :: Suit -> [Card] -> [[Card]]
-possibleStraightWithoutNewCard suit cards = filter hasPossibleStraight $ 
+possibleStraight :: Suit -> [Card] -> [[Card]]
+possibleStraight suit cards = filter hasPossibleStraight $ 
     subsequences sortedCards where
     sortedCards = sort (cardsWithSuit suit cards)
 
@@ -111,7 +114,7 @@ possibleStraightWithoutNewCard suit cards = filter hasPossibleStraight $
 toPickDiscardForStraight :: Card -> [Card] -> Bool
 toPickDiscardForStraight card cards = 
     length (possibleStraightWithNewCard card cards) > 
-    length (possibleStraightWithoutNewCard (getSuit card) cards)
+    length (possibleStraight (getSuit card) cards)
 
 -- | Check if player should draw from Discard by forming possible melds with 
 -- the card and not with the card.
@@ -199,7 +202,7 @@ isDrawDiscard (Just Discard) = True
 isDrawDiscard (Just Stock) = False
 isDrawDiscard Nothing = False
 
--- | Check if it is next round.
+-- | Check whether the game is in its next round.
 isNextRound :: Int ->  Int -> Bool
 isNextRound prev curr = prev /= curr
 
@@ -208,50 +211,38 @@ readScore :: Score -> Int
 readScore s = (getFirstFromMaybe . readInt) (show s)
 
 
--- Helper functions for playCard
+-- Helper functions for playCard function, might also be reused for other 
+-- functions.
 
--- | Return possible Straight melds with respective Suit
-possibleStraightInSpade :: [Card] -> [[Card]]
-possibleStraightInSpade = possibleStraightWithoutNewCard Spade
-
-possibleStraightInHeart :: [Card] -> [[Card]]
-possibleStraightInHeart = possibleStraightWithoutNewCard Heart
-
-possibleStraightInDiamond :: [Card] -> [[Card]]
-possibleStraightInDiamond = possibleStraightWithoutNewCard Diamond
-
-possibleStraightInClub :: [Card] -> [[Card]]
-possibleStraightInClub = possibleStraightWithoutNewCard Club
-
--- | Return a list of cards with all possible Straights based on respective 
--- Suit.
+-- | Check whether a list of Card is possible to form Straight.
 checkStraightInCards :: ([Card] -> [[Card]]) -> [Card] -> [Card]
-checkStraightInCards f cs
-    | not (null (f cs)) = longestStr ++ 
-        checkStraightInCards f unmatched
+checkStraightInCards hasStraight cs
+    | not (null (hasStraight cs)) = longestStr ++ 
+        checkStraightInCards hasStraight unmatched
     | otherwise = []
     where
-        longestStr = longest (f cs)
+        longestStr = longest (hasStraight cs)
         unmatched = [j | j <- cs, j `notElem` longestStr]
 
--- | Return a list of cards with all possible Straights.
+-- | Return a list of cards which is possible to form Straight for every 
+-- Suit.
 cardsInStraight :: [Card] -> [Card]
 cardsInStraight fullCards = 
-    checkStraightInCards possibleStraightInSpade fullCards ++ 
-    checkStraightInCards possibleStraightInClub cardsNoSpade ++ 
-    checkStraightInCards possibleStraightInDiamond cardsNoClub ++ 
-    checkStraightInCards possibleStraightInHeart cardsNoDiamond
+    checkStraightInCards (possibleStraight Spade) fullCards ++ 
+    checkStraightInCards (possibleStraight Club) cardsNoSpade ++ 
+    checkStraightInCards (possibleStraight Diamond) cardsNoClub ++ 
+    checkStraightInCards (possibleStraight Heart) cardsNoDiamond
     where
         cardsNoSpade = fullCards \\ 
-            checkStraightInCards possibleStraightInSpade fullCards
+            checkStraightInCards (possibleStraight Spade) fullCards
         cardsNoClub = cardsNoSpade \\ 
-            checkStraightInCards possibleStraightInClub cardsNoSpade
+            checkStraightInCards (possibleStraight Club) cardsNoSpade
         cardsNoDiamond = cardsNoClub \\ 
-            checkStraightInCards possibleStraightInDiamond cardsNoClub
+            checkStraightInCards (possibleStraight Diamond) cardsNoClub
 
 
--- | Return a list of cards with all possible Straights and sort nicely in the 
--- form of Straight 3, 4 and 5.
+-- | Return a list of cards with all possible Straights and sort them in 
+-- the form of Straight 3, 4 and 5 in different lists.
 cardInStraightList :: [Card] -> [[Card]]
 cardInStraightList [] = []
 cardInStraightList cs
@@ -269,7 +260,8 @@ cardInStraightList cs
         sublist4 = take 4 sorted
         sublist5 = take 5 sorted
 
--- | Sort straights to its respective suits.
+-- | Sort a list of Cards and divide them into different lists based on their 
+-- respective Suit. Cards of the same Suit will be placed in the same list.
 sortStraights :: [Card] -> [[Card]]
 sortStraights [] = []
 sortStraights cs = filteredCardOfSameSuit : sortStraights rest
@@ -277,15 +269,22 @@ sortStraights cs = filteredCardOfSameSuit : sortStraights rest
         filteredCardOfSameSuit = cardsWithSuit (getSuit (head cs)) cs
         rest = cs \\ existIn filteredCardOfSameSuit cs
 
--- | Count Set based on the rank given.
-countSet :: Rank -> [Card] -> Int
-countSet rank = countFiltered (\x -> getRank x == rank)
 
--- | Return a list of Cards in Set.
+-- | Return a list of Cards which can form Set.
 cardsInSet :: Int -> [Card] -> [Card]
 cardsInSet num cs = sort $ uniq [i | i <- cs, countSet (getRank i) cs >= num]
 
--- | Write memory in playCard. (more information in report)
+-- | Count the number of Cards which can form Set based on the Rank specified.
+countSet :: Rank -> [Card] -> Int
+countSet rank = countFiltered (\x -> getRank x == rank)
+
+
+-- Helper functions for writing and updating memory in playCard
+
+-- | Write memory and store the current progress as a string when playCard function 
+-- is called. The memory where it saves all the known discarded cards and the 
+-- deadwood in the current turn is updated in this function.
+
 writeMeminPlay :: String -> Card -> [Card] -> String
 writeMeminPlay mem toDiscard deadwood = 
     frontMemStr ++ updatedDiscards ++ " " ++ picked ++ " " 
@@ -297,26 +296,40 @@ writeMeminPlay mem toDiscard deadwood =
         picked = cardListToString (getCardsMem oppPickPar mem)
         updatedDiscards = cardListToString (toDiscard:discards)
 
--- |Choose Action. (more information in report)
+-- | Choose an Action, including Gin, Knock or Drop based on the strategy and 
+-- decision made by the player.
 chooseAction :: [Card] -> Int -> Int -> [Card] -> [Card] -> Card -> 
     [Card] -> Action
-chooseAction deadwood turnPars oppscore discards opicks recentPick hand
+chooseAction deadwood turnParser oppscore discards opicks recentPick hand
+    -- Choose Drop, play the Card with the highest value.
     | null nopick = Action Drop (maximum hand)
-    | turnPars /= 1 && length deadwood == 1 && head deadwood /= recentPick = 
-        Action Gin (head deadwood)
-    | turnPars /= 1 && countDeadwood deadwood < 10 && not (null nopick) = 
-        Action Knock (maximum nopick)
-    | otherwise =
-        Action Drop (chooseDiscard nopick turnPars oppscore discards opicks)
-    where
-        nopick = deadwood \\ [recentPick]
 
--- | Count deadwood in a list
+    -- Choose Gin, when one deadwood is left and it is not the first turn.
+    | turnParser /= 1 && length deadwood == 1 && head deadwood /= recentPick = 
+        Action Gin (head deadwood)
+
+    -- Choose Knock, when the number of deadwood is less than 10 and not the
+    -- first turn.
+    | turnParser /= 1 && countDeadwood deadwood < 10 && not (null nopick) = 
+        Action Knock (maximum nopick)
+
+    -- Choose Drop if none of the conditions above fits.
+    | otherwise =
+        Action Drop (chooseDiscard nopick turnParser oppscore discards opicks)
+   
+    where
+        -- a variable where last drawn card is excluded as it is not allowed to
+        -- play the last drawn card
+        nopick = deadwood \\ [recentPick] 
+
+
+-- | Count number of deadwoods from a list of Cards.
 countDeadwood :: [Card] -> Int
 countDeadwood =  foldr ((+) . toPoints) 0
 
-discardRule1 :: Foldable t => Card -> t Card -> [Card]
-discardRule1 opick = foldr (\x xs -> 
+-- | 
+compareOppPick :: Foldable t => Card -> t Card -> [Card]
+compareOppPick opick = foldr (\x xs -> 
     if notSameRank opick x && notConsecutiveRank opick x then x:xs else xs) []
     where
         notSameRank a b = getRank a /= getRank b
@@ -324,13 +337,12 @@ discardRule1 opick = foldr (\x xs ->
             abs (fromEnum (getRank a) - fromEnum (getRank b)) /= 1
 
 
-
 -- | (more information in report)
-discardRule2 :: [Card] -> [Card] -> Int -> Card
-discardRule2 deadwood discards turnPars
+comparePossibleMeld :: [Card] -> [Card] -> Int -> Card
+comparePossibleMeld deadwood discards turnParser
     | not (null possibleMeld) && not (null possibleMatchDeadwood) = 
         maximum possibleMatchDeadwood
-    | null possibleMeld && turnPars <= 2 && (getRank . minimum) deadwood < Three = 
+    | null possibleMeld && turnParser <= 2 && (getRank . minimum) deadwood < Three = 
         minimum deadwood
     | otherwise = maximum deadwood
         where
@@ -339,13 +351,13 @@ discardRule2 deadwood discards turnPars
 
 -- | (more information in report)
 chooseDiscard :: [Card] -> Int -> Int -> [Card] -> [Card] -> Card
-chooseDiscard deadwood turnPars oppscore discards opicks
+chooseDiscard deadwood turnParser oppscore discards opicks
     | oppscore >= 75 = maximum deadwood
-    | null opicks || null filtered = discardRule2 deadwood discards turnPars
-    | length filtered > 1 = discardRule2 filtered discards turnPars
-    | otherwise = head filtered -- here output of discardRule1 only has 1 element
+    | null opicks || null filtered = comparePossibleMeld deadwood discards turnParser
+    | length filtered > 1 = comparePossibleMeld filtered discards turnParser
+    | otherwise = head filtered -- here output of compareOppPick only has 1 element
     where 
-        filtered = discardRule1 (head opicks) deadwood
+        filtered = compareOppPick (head opicks) deadwood
 
 melds :: [Card] -> [Card]
 melds cs = set ++ concat straight
