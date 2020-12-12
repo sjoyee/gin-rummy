@@ -1,1 +1,4 @@
 .DS_Store
+.stack-work/
+rummy.cabal
+stack.yaml.lock
