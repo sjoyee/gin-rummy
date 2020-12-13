@@ -308,9 +308,9 @@ chooseAction deadwood turnParser oppscore discards opicks recentPick hand
     | turnParser /= 1 && length deadwood == 1 && head deadwood /= recentPick = 
         Action Gin (head deadwood)
 
-    -- Choose Knock, when the number of deadwood is less than 10 and not the
+    -- Choose Knock, when the value of deadwood is less than 10 and not the
     -- first turn.
-    | turnParser /= 1 && countDeadwood deadwood < 10 && not (null nopick) = 
+    | turnParser /= 1 && countCardValue deadwood < 10 && not (null nopick) = 
         Action Knock (maximum nopick)
 
     -- Choose Drop if none of the conditions above fits.
@@ -323,11 +323,12 @@ chooseAction deadwood turnParser oppscore discards opicks recentPick hand
         nopick = deadwood \\ [recentPick] 
 
 
--- | Count number of deadwoods from a list of Cards.
-countDeadwood :: [Card] -> Int
-countDeadwood =  foldr ((+) . toPoints) 0
+-- | Count value of Cards.
+countCardValue :: [Card] -> Int
+countCardValue =  foldr ((+) . toPoints) 0
 
--- | 
+-- | Filter a list of cards without same and consecutive rank as the Card opick 
+-- (opponent's most recent pick).
 compareOppPick :: Foldable t => Card -> t Card -> [Card]
 compareOppPick opick = foldr (\x xs -> 
     if notSameRank opick x && notConsecutiveRank opick x then x:xs else xs) []
@@ -337,19 +338,32 @@ compareOppPick opick = foldr (\x xs ->
             abs (fromEnum (getRank a) - fromEnum (getRank b)) /= 1
 
 
--- | (more information in report)
+-- | Compare two list of Cards and check whether there is possible match to form melds.
+-- Then, priority is given to certain Card to be discarded based on strategy used.
 comparePossibleMeld :: [Card] -> [Card] -> Int -> Card
 comparePossibleMeld deadwood discards turnParser
+    -- If there is possible match, prioritise returning (discarding) the Card with the 
+    -- highest value from the possible matches .
     | not (null possibleMeld) && not (null possibleMatchDeadwood) = 
         maximum possibleMatchDeadwood
+    
+    -- If there is no possible match and the game is currently at the first two turn,
+    -- check whether the player owns Card with Rank Ace or Two, and prioritise discarding
+    -- it.
     | null possibleMeld && turnParser <= 2 && (getRank . minimum) deadwood < Three = 
         minimum deadwood
+
+    -- If none of the condition above is met, prioritse discarding the Card with the 
+    -- highest value from deadwood.
     | otherwise = maximum deadwood
         where
             possibleMeld = melds (deadwood ++ discards)
             possibleMatchDeadwood = existIn deadwood possibleMeld
 
--- | (more information in report)
+
+-- | Choose the discarded card from the current Cards in hand. The function compareOppPick
+-- and comparePossibleMeld helps to filter and implement the strategy used.
+-- For more information on the strategy used, please refer to the report.
 chooseDiscard :: [Card] -> Int -> Int -> [Card] -> [Card] -> Card
 chooseDiscard deadwood turnParser oppscore discards opicks
     | oppscore >= 75 = maximum deadwood
@@ -359,6 +373,7 @@ chooseDiscard deadwood turnParser oppscore discards opicks
     where 
         filtered = compareOppPick (head opicks) deadwood
 
+-- | Return only the melds from a list of Card, excluding deadwood.
 melds :: [Card] -> [Card]
 melds cs = set ++ concat straight
     where 
@@ -367,10 +382,12 @@ melds cs = set ++ concat straight
         straight = concat $ filter (\x -> length x > 1) <$> 
             (cardInStraightList <$> sortStraights withoutSet)
 
+-- | Return only the deadwood from a list of Card.
 deadwoods :: [Card] -> [Card]
 deadwoods cs = sort (cs \\ melds cs)
 
-
+-- | Arrange and convert type Card to type Meld to make melds at the end of the
+-- game.
 toMelds :: [Card] -> [Meld]
 toMelds cs = makeSetMeld cs1 ++ makeStraightMeld cs2 ++ (Deadwood <$> cs3)
     where
@@ -378,8 +395,7 @@ toMelds cs = makeSetMeld cs1 ++ makeStraightMeld cs2 ++ (Deadwood <$> cs3)
         cs2 = cardsInStraight (cs \\ cs1)
         cs3 = cs \\ (cs1 ++ cs2)
    
-
-
+-- | Sort the Sets with the same rank in the same list, for all Ranks.
 sortSets :: [Card] -> [[Card]]
 sortSets [] = []
 sortSets cs = filteredCardOfSameRank : sortSets rest
@@ -387,16 +403,21 @@ sortSets cs = filteredCardOfSameRank : sortSets rest
         filteredCardOfSameRank = cardsWithRank (getRank (head cs)) cs
         rest = cs \\ existIn filteredCardOfSameRank cs
 
+-- | Convert a list of Card to a list of Straights for all Straight
+-- combination in the Card list.
 makeStraightMeld :: [Card] -> [Meld]
 makeStraightMeld [] = []
 makeStraightMeld cs = concat $ makeStraight <$> 
     concat (cardInStraightList <$> sortStraights cs)
 
-
+-- | -- | Convert a list of Card to a list of Sets for all Set
+-- combination in the Card list.
 makeSetMeld :: [Card] -> [Meld]
 makeSetMeld [] = []
 makeSetMeld cs = concat (makeSets <$> sortSets cs)
 
+-- | Convert a list of Set combination of Card type in specific
+-- sequence to the type Set 3 and Set 4 respectively.
 makeSets :: [Card] -> [Meld]
 makeSets cs = case length cs of
     3 -> [Set3 (head sorted) (sorted!!1) (sorted!!2)]
@@ -404,7 +425,11 @@ makeSets cs = case length cs of
     _ -> []
     where
         sorted = sort cs
-        
+
+-- | Convert a list of Straight combination of Card type in specific
+-- sequence to the type Straight 3, Straight 4 and Straight 5 
+-- respectively. If the length of the list of Card arranged is one,
+-- the Card is a Deadwood.
 makeStraight :: [Card] -> [Meld]
 makeStraight cs = case length cs of
     1 -> [Deadwood (head sorted)]
@@ -414,7 +439,6 @@ makeStraight cs = case length cs of
     _ -> []
     where
         sorted = sort cs      
-
 
 
 -- Show instances
